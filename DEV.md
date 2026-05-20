@@ -48,22 +48,16 @@ Use this baseline stack unless the architecture document is intentionally update
 
 ## Repository State
 
-This repository currently starts as documentation only. Do not assume framework scaffolding, package managers, commands, or CI exist until they are added in tracked files.
+This repository contains the first application scaffold:
 
-When scaffolding is added, this file should be updated with exact commands for:
-
-- Installing backend dependencies.
-- Installing frontend dependencies.
-- Running the API server.
-- Running the frontend development server.
-- Running workers.
-- Running tests.
-- Applying migrations.
-- Running linters and formatters.
+- `backend/`: Django project, Django REST Framework APIs, domain apps, service-layer workflows, initial migrations, and tests.
+- `frontend/`: Next.js responsive web/PWA dashboard shell.
+- `docker-compose.yml`: PostgreSQL, Redis, backend, Celery worker, and frontend local stack.
+- `.env.example`: local environment defaults.
 
 ## Local Development Conventions
 
-Recommended future layout:
+Current layout:
 
 ```text
 backend/
@@ -71,16 +65,89 @@ backend/
   apps/
 frontend/
   app/
-  components/
   lib/
-infra/
-  docker/
-docs/
+docker-compose.yml
+.env.example
 ```
 
 Keep the backend modular even before services are split. Each backend domain should own its models, serializers, services, permissions, tests, and migrations.
 
 Prefer explicit service-layer functions for business workflows such as accepting applications, assigning cleaners, completing jobs, and submitting reviews. Avoid putting marketplace state transitions directly inside views.
+
+## Environment Setup
+
+Copy the example environment file before using Docker Compose:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+The Docker environment uses PostgreSQL and Redis. When running the backend directly without `DATABASE_URL`, Django falls back to local SQLite for lightweight development checks.
+
+## Docker Development
+
+Run the full local stack:
+
+```powershell
+docker compose up --build
+```
+
+Useful service URLs:
+
+- Frontend: `http://localhost:3000`
+- Backend health check: `http://localhost:8000/api/health/`
+- Django admin: `http://localhost:8000/admin/`
+
+Run backend commands through Docker:
+
+```powershell
+docker compose run --rm backend python manage.py migrate
+docker compose run --rm backend python manage.py createsuperuser
+docker compose run --rm backend python manage.py test
+```
+
+## Backend Local Commands
+
+From `backend/`:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py runserver
+```
+
+Run tests and checks:
+
+```powershell
+python manage.py check
+python manage.py test
+python -m compileall .
+```
+
+Run a Celery worker after Redis is available and dependencies are installed:
+
+```powershell
+celery -A config worker --loglevel=info
+```
+
+## Frontend Local Commands
+
+From `frontend/`:
+
+```powershell
+npm install
+npm run dev
+```
+
+Run frontend checks:
+
+```powershell
+npm run typecheck
+npm run lint
+npm run build
+```
 
 ## Git Setup Note
 

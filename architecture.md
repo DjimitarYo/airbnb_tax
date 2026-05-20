@@ -22,6 +22,15 @@ The code should be organized around business domains, not technical layers alone
 
 Future extraction into microservices should be possible without rewriting core business logic.
 
+Current implementation modules:
+
+- `apps.accounts`: users, host profiles, cleaner profiles, verification state, and role permissions.
+- `apps.properties`: host properties, external calendar connections, and reservations.
+- `apps.marketplace`: cleaning batches, jobs, applications, assignments, and marketplace workflow services.
+- `apps.calendars`: conflict checks and placeholder background sync tasks.
+- `apps.feedback`: two-way reviews and cleaner reputation updates.
+- `apps.notifications`: in-app notification records and provider dispatch placeholders.
+
 ## Product Domains
 
 ### Identity and Access
@@ -236,4 +245,3 @@ Target EU managed cloud infrastructure:
 - Basic metrics and uptime monitoring.
 
 The system should be GDPR-conscious from the start. Store only necessary personal data, avoid secrets in source control, and document retention/deletion decisions when they are implemented.
-

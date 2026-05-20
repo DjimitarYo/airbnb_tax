@@ -45,6 +45,7 @@ Update docs in the same change when altering:
 
 Use:
 
+- `README.md` for project overview and quick-start entry points.
 - `BUSINESS.md` for business strategy, target market, user segments, monetization hypotheses, success metrics, risks, and open business questions.
 - `DEV.md` for developer setup and project operating instructions.
 - `architecture.md` for technical architecture and domain boundaries.
