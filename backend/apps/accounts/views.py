@@ -1,15 +1,101 @@
 from django.contrib.auth import get_user_model
-from rest_framework import permissions, viewsets
+from django.contrib.auth import login, logout
+from django.db.models import Count, Q
+from django.utils import timezone
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import ensure_csrf_cookie
+from rest_framework import permissions, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.response import Response
+from rest_framework.views import APIView
+import uuid
 
-from apps.accounts.models import CleanerProfile, HostProfile
+from apps.accounts.models import (
+    AgencyInvitation,
+    AgencyMembership,
+    AgencyProfile,
+    CleanerProfile,
+    CookieConsent,
+    HostProfile,
+)
+from apps.accounts.permissions import IsPlatformAdmin
 from apps.accounts.serializers import (
+    AgencyInvitationSerializer,
+    AgencyInviteSerializer,
+    AgencyMembershipSerializer,
+    AgencyProfileSerializer,
     CleanerProfileSerializer,
+    CookieConsentSerializer,
     HostProfileSerializer,
+    LoginSerializer,
+    SignupSerializer,
     UserSerializer,
 )
 
 
 User = get_user_model()
+
+
+@method_decorator(ensure_csrf_cookie, name="dispatch")
+class SignupView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = SignupSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        login(request, user)
+        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
+
+
+@method_decorator(ensure_csrf_cookie, name="dispatch")
+class LoginView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = LoginSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data["user"]
+        login(request, user)
+        return Response(UserSerializer(user).data)
+
+
+class LogoutView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        logout(request)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@method_decorator(ensure_csrf_cookie, name="dispatch")
+class MeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        return Response(UserSerializer(request.user).data)
+
+
+class CookieConsentView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        queryset = CookieConsent.objects.all()
+        if request.user.is_authenticated:
+            consent = queryset.filter(user=request.user).first()
+        else:
+            visitor_id = request.query_params.get("visitor_id", "").strip()
+            consent = queryset.filter(visitor_id=visitor_id).first() if visitor_id else None
+        if consent is None:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response(CookieConsentSerializer(consent).data)
+
+    def post(self, request):
+        serializer = CookieConsentSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        consent = serializer.save()
+        return Response(CookieConsentSerializer(consent).data, status=status.HTTP_201_CREATED)
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -18,6 +104,8 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == "create":
             return [permissions.AllowAny()]
+        if self.action in {"approve", "reject", "suspend"}:
+            return [IsPlatformAdmin()]
         return [permissions.IsAuthenticated()]
 
     def get_queryset(self):
@@ -25,6 +113,36 @@ class UserViewSet(viewsets.ModelViewSet):
         if user.is_platform_admin:
             return User.objects.all().order_by("id")
         return User.objects.filter(id=user.id)
+
+    def perform_update(self, serializer):
+        if not self.request.user.is_platform_admin:
+            protected_fields = {"role", "account_status", "is_staff", "is_superuser"}
+            if protected_fields.intersection(self.request.data):
+                raise PermissionDenied("Only admins can change account role or approval state.")
+        serializer.save()
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        user = self.get_object()
+        user.account_status = User.AccountStatus.APPROVED
+        user.approved_at = timezone.now()
+        user.approved_by = request.user
+        user.save(update_fields=["account_status", "approved_at", "approved_by"])
+        return Response(self.get_serializer(user).data)
+
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        user = self.get_object()
+        user.account_status = User.AccountStatus.REJECTED
+        user.save(update_fields=["account_status"])
+        return Response(self.get_serializer(user).data)
+
+    @action(detail=True, methods=["post"])
+    def suspend(self, request, pk=None):
+        user = self.get_object()
+        user.account_status = User.AccountStatus.SUSPENDED
+        user.save(update_fields=["account_status"])
+        return Response(self.get_serializer(user).data)
 
 
 class HostProfileViewSet(viewsets.ModelViewSet):
@@ -45,5 +163,140 @@ class CleanerProfileViewSet(viewsets.ModelViewSet):
         queryset = CleanerProfile.objects.select_related("user").all().order_by("id")
         if user.is_platform_admin or user.is_host:
             return queryset
+        if user.is_agency:
+            return queryset.filter(user__agency_memberships__agency__user=user, user__agency_memberships__status=AgencyMembership.Status.ACTIVE)
         return queryset.filter(user=user)
 
+    def perform_update(self, serializer):
+        if not self.request.user.is_platform_admin and "verification_status" in self.request.data:
+            raise PermissionDenied("Only admins can change cleaner verification status.")
+        serializer.save()
+
+
+class AgencyProfileViewSet(viewsets.ModelViewSet):
+    serializer_class = AgencyProfileSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        queryset = AgencyProfile.objects.select_related("user").annotate(
+            members_count=Count("memberships", filter=Q(memberships__status=AgencyMembership.Status.ACTIVE))
+        )
+        if user.is_platform_admin:
+            return queryset.order_by("company_name")
+        if user.is_agency:
+            return queryset.filter(user=user)
+        return queryset.none()
+
+    def perform_create(self, serializer):
+        if not (self.request.user.is_platform_admin or self.request.user.is_agency):
+            raise PermissionDenied("Only agency accounts can create agency profiles.")
+        if not self.request.user.is_platform_admin and hasattr(self.request.user, "agency_profile"):
+            raise PermissionDenied("This agency account already has a profile.")
+        serializer.save(user=self.request.user)
+
+    @action(detail=True, methods=["post"], url_path="invite-cleaner")
+    def invite_cleaner(self, request, pk=None):
+        agency = self.get_object()
+        if not (request.user.is_platform_admin or agency.user_id == request.user.id):
+            raise PermissionDenied("You can invite cleaners only for your own agency.")
+
+        serializer = AgencyInviteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data.get("email", "")
+        phone_number = serializer.validated_data.get("phone_number", "")
+
+        duplicate_filter = Q(status=AgencyInvitation.Status.PENDING)
+        if email:
+            duplicate_filter &= Q(email__iexact=email)
+        else:
+            duplicate_filter &= Q(phone_number=phone_number)
+
+        if agency.invitations.filter(duplicate_filter).exists():
+            raise ValidationError("A pending invitation already exists for this cleaner.")
+
+        invitation = AgencyInvitation.objects.create(
+            agency=agency,
+            email=email,
+            phone_number=phone_number,
+            message=serializer.validated_data.get("message", ""),
+            invited_by=request.user,
+            token=uuid.uuid4().hex,
+        )
+        return Response(AgencyInvitationSerializer(invitation).data, status=status.HTTP_201_CREATED)
+
+
+class AgencyInvitationViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = AgencyInvitationSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        queryset = AgencyInvitation.objects.select_related("agency", "agency__user", "cleaner")
+        if user.is_platform_admin:
+            return queryset
+        if user.is_agency:
+            return queryset.filter(agency__user=user)
+        if user.is_cleaner:
+            contact_filter = Q(cleaner=user)
+            if user.email:
+                contact_filter |= Q(status=AgencyInvitation.Status.PENDING, email__iexact=user.email)
+            if user.phone_number:
+                contact_filter |= Q(
+                    status=AgencyInvitation.Status.PENDING,
+                    phone_number=user.phone_number,
+                )
+            return queryset.filter(contact_filter)
+        return queryset.none()
+
+    @action(detail=True, methods=["post"])
+    def accept(self, request, pk=None):
+        invitation = self.get_object()
+        user = request.user
+        if not user.is_cleaner:
+            raise PermissionDenied("Only cleaner accounts can accept agency invitations.")
+        if invitation.status != AgencyInvitation.Status.PENDING:
+            raise ValidationError("Only pending invitations can be accepted.")
+        if invitation.is_expired:
+            invitation.status = AgencyInvitation.Status.EXPIRED
+            invitation.save(update_fields=["status", "updated_at"])
+            raise ValidationError("This invitation has expired.")
+
+        email_matches = bool(invitation.email and user.email and invitation.email.lower() == user.email.lower())
+        phone_matches = bool(invitation.phone_number and invitation.phone_number == user.phone_number)
+        if not (email_matches or phone_matches):
+            raise PermissionDenied("This invitation does not match your account email or phone number.")
+
+        membership, created = AgencyMembership.objects.get_or_create(
+            agency=invitation.agency,
+            cleaner=user,
+            defaults={
+                "invited_by": invitation.invited_by,
+                "invitation": invitation,
+                "status": AgencyMembership.Status.ACTIVE,
+            },
+        )
+        if not created and membership.status != AgencyMembership.Status.ACTIVE:
+            membership.status = AgencyMembership.Status.ACTIVE
+            membership.revoked_at = None
+            membership.invitation = invitation
+            membership.save(update_fields=["status", "revoked_at", "invitation", "updated_at"])
+
+        invitation.status = AgencyInvitation.Status.ACCEPTED
+        invitation.cleaner = user
+        invitation.accepted_at = timezone.now()
+        invitation.save(update_fields=["status", "cleaner", "accepted_at", "updated_at"])
+        return Response(AgencyMembershipSerializer(membership).data, status=status.HTTP_201_CREATED)
+
+
+class AgencyMembershipViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = AgencyMembershipSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        queryset = AgencyMembership.objects.select_related("agency", "cleaner", "invited_by", "invitation")
+        if user.is_platform_admin:
+            return queryset
+        if user.is_agency:
+            return queryset.filter(agency__user=user)
+        if user.is_cleaner:
+            return queryset.filter(cleaner=user)
+        return queryset.none()

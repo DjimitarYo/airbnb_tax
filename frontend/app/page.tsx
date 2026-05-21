@@ -115,12 +115,15 @@ export default function Home() {
           <a href="#how-it-works">How it works</a>
           <a href="#cleaners">Cleaners</a>
           <a href="#trust">Trust</a>
-          <a href="#join">Join</a>
+          <a href="/signup">Sign up</a>
         </nav>
 
         <div className="header-actions">
-          <a className="text-link" href="#join">
-            Become a cleaner
+          <a className="text-link" href="/login">
+            Log in
+          </a>
+          <a className="text-link" href="/signup">
+            Sign up
           </a>
           <button
             className="menu-button"
@@ -312,8 +315,8 @@ export default function Home() {
             Find cleaners
             <ChevronRight size={18} aria-hidden />
           </a>
-          <a className="secondary-link" href="#top">
-            Join as cleaner
+          <a className="secondary-link" href="/signup">
+            Create account
             <Users size={18} aria-hidden />
           </a>
         </div>

@@ -8,12 +8,15 @@ The product direction for v1 is:
 
 - Responsive web/PWA.
 - Public landing page first, with marketplace operations behind authenticated app screens later.
+- Session-cookie authentication with manual admin approval for v1.
 - Django REST Framework backend.
 - React/Next.js frontend.
 - PostgreSQL, Redis, and Celery.
 - Bulgarian and English UI.
 - EUR currency.
 - Verified cleaners.
+- Agency accounts that invite separate cleaner users into agency groups.
+- Consent-first cookie handling for optional analytics and marketing cookies.
 - Single cleaning and monthly batch posting.
 - Google Calendar sync and iCal import/export.
 - Two-way reviews.
@@ -76,6 +79,8 @@ When code exists:
 ## Marketplace Rules To Preserve
 
 - Cleaners must be verified before applying for marketplace jobs.
+- Users must be approved before full marketplace rights are enabled.
+- Agencies must assign accepted agency jobs only to active member cleaners.
 - Hosts can post one cleaning or a monthly batch.
 - Cleaners apply; hosts accept or reject.
 - Price can be proposed or agreed in the app, but payment is handled outside the platform in v1.

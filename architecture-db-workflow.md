@@ -9,9 +9,59 @@ erDiagram
       string email
       string password
       string role
+      string account_status
       string name
       string phone
-      bool is_verified
+      string preferred_language
+      datetime approved_at
+      datetime email_verified_at
+      datetime phone_verified_at
+    }
+    HOST_PROFILE {
+      int id PK
+      int user_id FK
+      string company_name
+      string city
+      string notes
+    }
+    CLEANER_PROFILE {
+      int id PK
+      int user_id FK
+      string type
+      string verification_status
+      string area
+      string description
+      decimal average_rating
+      int completed_jobs_count
+    }
+    AGENCY_PROFILE {
+      int id PK
+      int user_id FK
+      string company_name
+      string city
+      json service_areas
+      string description
+    }
+    AGENCY_INVITATION {
+      int id PK
+      int agency_id FK
+      int invited_by_id FK
+      int cleaner_id FK
+      string email
+      string phone
+      string status
+      string token
+      datetime expires_at
+      datetime accepted_at
+    }
+    AGENCY_MEMBERSHIP {
+      int id PK
+      int agency_id FK
+      int cleaner_id FK
+      int invitation_id FK
+      string status
+      datetime joined_at
+      datetime revoked_at
     }
     PROPERTY {
       int id PK
@@ -22,30 +72,32 @@ erDiagram
       int bedrooms
       string notes
     }
-    CLEANER_PROFILE {
-      int id PK
-      int user_id FK
-      string type
-      string area
-      bool is_approved
-      string description
-    }
     CLEANING_JOB {
       int id PK
       int property_id FK
+      int host_id FK
       date date
       string status
+      decimal proposed_price
       decimal agreed_price
-      int assigned_cleaner_id FK
       string calendar_event_id
     }
     APPLICATION {
       int id PK
       int job_id FK
-      int cleaner_id FK
+      int applicant_user_id FK
       string note
       decimal proposed_price
       string status
+    }
+    ASSIGNMENT {
+      int id PK
+      int job_id FK
+      int applicant_user_id FK
+      int assigned_member_id FK
+      decimal agreed_price
+      datetime assigned_at
+      datetime completed_at
     }
     FEEDBACK {
       int id PK
@@ -55,37 +107,71 @@ erDiagram
       int rating
       string comment
     }
+    COOKIE_CONSENT {
+      int id PK
+      int user_id FK
+      string visitor_id
+      string consent_version
+      string policy_version
+      bool essential
+      bool analytics
+      bool marketing
+      datetime created_at
+    }
 
+    USER ||--o| HOST_PROFILE : owns
+    USER ||--o| CLEANER_PROFILE : owns
+    USER ||--o| AGENCY_PROFILE : owns
+    AGENCY_PROFILE ||--o{ AGENCY_INVITATION : sends
+    AGENCY_PROFILE ||--o{ AGENCY_MEMBERSHIP : has
+    USER ||--o{ AGENCY_MEMBERSHIP : cleaner_member
     USER ||--o{ PROPERTY : owns
-    USER ||--o{ CLEANER_PROFILE : has
     PROPERTY ||--o{ CLEANING_JOB : schedules
-    CLEANER_PROFILE ||--o{ APPLICATION : applies
     CLEANING_JOB ||--o{ APPLICATION : receives
+    USER ||--o{ APPLICATION : submits
+    CLEANING_JOB ||--o| ASSIGNMENT : has
+    USER ||--o{ ASSIGNMENT : accepted_applicant
+    USER ||--o{ ASSIGNMENT : assigned_member
     CLEANING_JOB ||--o{ FEEDBACK : gets
     USER ||--o{ FEEDBACK : gives
-    CLEANER_PROFILE ||--o{ CLEANING_JOB : assigned
+    USER ||--o{ COOKIE_CONSENT : records
 ```
 
 ## Application Workflow
 
-1. **User Registration & Roles**
-   - Users sign up as Host, Cleaner, or Admin.
-   - Cleaners must be verified by Admin before applying for jobs.
-2. **Property Management (Host)**
-   - Hosts add/manage properties.
-3. **Job Posting (Host)**
-   - Hosts post single or batch cleaning jobs for their properties.
-4. **Cleaner Applications**
-   - Verified cleaners see available jobs and apply with notes and price.
-5. **Assignment**
-   - Hosts review applications and assign a cleaner.
-6. **Job Execution**
-   - Job status updates as scheduled, in progress, completed.
-7. **Calendar Sync**
-   - Internal calendar is the source of truth; Google/iCal sync available.
-8. **Notifications**
-   - Email, in-app, and SMS notifications for key events.
-9. **Feedback**
-   - After job completion, both host and cleaner leave reviews.
-10. **Admin Moderation**
-    - Admins approve cleaners, moderate reviews, and resolve disputes.
+1. **User Registration & Approval**
+   - Users sign up as Property Owner (`host`), Cleaner, Agency, or Admin.
+   - New public signups start as `pending`.
+   - Pending users can log in and complete onboarding, but cannot post jobs, apply, accept assignments, or assign agency work.
+   - Admins approve, reject, or suspend users.
+2. **Future Email/SMS Verification**
+   - User records store future email and phone verification timestamps.
+   - Code delivery and expiry through email or SMS are planned for a later provider integration.
+3. **Property Management (Property Owner)**
+   - Approved property owners add/manage properties.
+4. **Job Posting**
+   - Approved property owners post single or batch cleaning jobs for their properties.
+5. **Cleaner and Agency Applications**
+   - Approved, verified cleaners can apply directly.
+   - Approved agencies can apply as an agency account.
+6. **Assignment**
+   - Hosts review applications and assign one cleaner or agency.
+   - If an agency is assigned, it chooses an active member cleaner for the job calendar.
+7. **Agency Membership**
+   - Agencies invite cleaners by email or phone.
+   - Cleaners accept invitations from their own user account.
+   - Agency work can be assigned only to active member cleaners with approved and verified accounts.
+8. **Job Execution**
+   - Job status updates as scheduled, assigned, completed, cancelled, or disputed.
+9. **Calendar Sync**
+   - Internal calendar is the source of truth; Google/iCal sync remains available through the calendar domain.
+10. **Notifications**
+    - Email, in-app, and SMS notifications remain the intended channels for key events.
+11. **Feedback**
+    - After job completion, involved parties leave two-way reviews.
+12. **Cookie Consent**
+    - Essential login/security cookies are always enabled.
+    - Analytics and marketing cookies are recorded only after explicit consent.
+    - Consent stores visitor/user identity, choices, consent version, policy version, and timestamp.
+13. **Admin Moderation**
+    - Admins approve accounts, verify cleaners/agencies, moderate reviews, inspect agency memberships, and resolve disputes.

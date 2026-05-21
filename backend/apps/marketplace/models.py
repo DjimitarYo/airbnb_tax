@@ -119,6 +119,13 @@ class Assignment(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="cleaning_assignments",
     )
+    assigned_member = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="agency_assigned_cleanings",
+        null=True,
+        blank=True,
+    )
     application = models.OneToOneField(
         CleanerApplication,
         on_delete=models.SET_NULL,
@@ -133,4 +140,3 @@ class Assignment(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.cleaner} assigned to {self.job}"
-

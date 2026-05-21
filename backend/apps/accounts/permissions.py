@@ -23,3 +23,7 @@ class IsVerifiedCleaner(BasePermission):
         profile = getattr(request.user, "cleaner_profile", None)
         return bool(profile and profile.is_verified)
 
+
+class IsApprovedAccount(BasePermission):
+    def has_permission(self, request, view) -> bool:
+        return bool(request.user and request.user.is_authenticated and request.user.is_approved)

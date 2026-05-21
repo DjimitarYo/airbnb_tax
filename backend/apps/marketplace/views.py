@@ -1,4 +1,5 @@
 from django.db.models import Q
+from django.contrib.auth import get_user_model
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -6,6 +7,7 @@ from rest_framework.response import Response
 
 from apps.marketplace.models import Assignment, CleanerApplication, CleaningBatch, CleaningJob
 from apps.marketplace.serializers import (
+    AssignMemberSerializer,
     AssignmentSerializer,
     CleanerApplicationSerializer,
     CleaningBatchSerializer,
@@ -14,10 +16,14 @@ from apps.marketplace.serializers import (
 from apps.marketplace.services import (
     MarketplaceError,
     accept_application,
+    assign_member_to_assignment,
     complete_job,
     publish_job,
     submit_application,
 )
+
+
+User = get_user_model()
 
 
 class MarketplaceQuerysetMixin:
@@ -25,10 +31,18 @@ class MarketplaceQuerysetMixin:
         user = self.request.user
         if user.is_platform_admin:
             return queryset
+        if not user.is_approved:
+            return queryset.none()
         if user.is_host:
             return queryset.filter(host=user)
         if user.is_cleaner:
-            return queryset.filter(Q(status=CleaningJob.Status.OPEN) | Q(assignment__cleaner=user))
+            return queryset.filter(
+                Q(status=CleaningJob.Status.OPEN)
+                | Q(assignment__cleaner=user)
+                | Q(assignment__assigned_member=user)
+            ).distinct()
+        if user.is_agency:
+            return queryset.filter(Q(status=CleaningJob.Status.OPEN) | Q(assignment__cleaner=user)).distinct()
         return queryset.none()
 
 
@@ -46,6 +60,8 @@ class CleaningBatchViewSet(viewsets.ModelViewSet):
         property = serializer.validated_data["property"]
         if not (self.request.user.is_platform_admin or self.request.user.is_host):
             raise PermissionDenied("Only hosts can create cleaning batches.")
+        if not self.request.user.is_platform_admin and not self.request.user.is_approved:
+            raise PermissionDenied("Account must be approved before creating cleaning batches.")
         if not self.request.user.is_platform_admin and property.host_id != self.request.user.id:
             raise PermissionDenied("Hosts can create batches only for their own properties.")
         serializer.save(host=property.host)
@@ -64,12 +80,16 @@ class CleaningJobViewSet(MarketplaceQuerysetMixin, viewsets.ModelViewSet):
         property = serializer.validated_data["property"]
         if not (self.request.user.is_platform_admin or self.request.user.is_host):
             raise PermissionDenied("Only hosts can create cleaning jobs.")
+        if not self.request.user.is_platform_admin and not self.request.user.is_approved:
+            raise PermissionDenied("Account must be approved before creating cleaning jobs.")
         if not self.request.user.is_platform_admin and property.host_id != self.request.user.id:
             raise PermissionDenied("Hosts can create jobs only for their own properties.")
         serializer.save(host=property.host)
 
     @action(detail=True, methods=["post"])
     def publish(self, request, pk=None):
+        if not request.user.is_platform_admin and not request.user.is_approved:
+            raise PermissionDenied("Account must be approved before publishing jobs.")
         try:
             job = publish_job(self.get_object())
         except MarketplaceError as exc:
@@ -93,9 +113,11 @@ class CleanerApplicationViewSet(viewsets.ModelViewSet):
         queryset = CleanerApplication.objects.select_related("job", "cleaner", "job__host")
         if user.is_platform_admin:
             return queryset
+        if not user.is_approved:
+            return queryset.none()
         if user.is_host:
             return queryset.filter(job__host=user)
-        if user.is_cleaner:
+        if user.is_cleaner or user.is_agency:
             return queryset.filter(cleaner=user)
         return queryset.none()
 
@@ -129,8 +151,31 @@ class AssignmentViewSet(viewsets.ReadOnlyModelViewSet):
         queryset = Assignment.objects.select_related("job", "cleaner", "application", "job__host")
         if user.is_platform_admin:
             return queryset
+        if not user.is_approved:
+            return queryset.none()
         if user.is_host:
             return queryset.filter(job__host=user)
         if user.is_cleaner:
+            return queryset.filter(Q(cleaner=user) | Q(assigned_member=user))
+        if user.is_agency:
             return queryset.filter(cleaner=user)
         return queryset.none()
+
+    @action(detail=True, methods=["post"], url_path="assign-member")
+    def assign_member(self, request, pk=None):
+        serializer = AssignMemberSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            member = User.objects.get(id=serializer.validated_data["assigned_member_id"])
+        except User.DoesNotExist:
+            return Response({"detail": "Cleaner account was not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            assignment = assign_member_to_assignment(
+                assignment=self.get_object(),
+                agency_user=request.user,
+                member=member,
+            )
+        except MarketplaceError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(assignment).data)

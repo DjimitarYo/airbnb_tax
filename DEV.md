@@ -10,7 +10,11 @@ The MVP should let hosts post one cleaning or a month of cleaning jobs, let veri
 
 The first production version should include:
 
-- Host, cleaner, and admin user roles.
+- Property owner (`host`), cleaner, agency, and admin user roles.
+- Session-cookie signup/login/logout/current-user APIs.
+- Manual admin approval before marketplace rights are enabled.
+- Agency invitations and agency-cleaner memberships.
+- Consent-first cookie recording for optional analytics and marketing cookies.
 - Host property management.
 - Single cleaning job posting.
 - Monthly cleaning batch creation from reservations or manual dates.
@@ -171,6 +175,7 @@ Current landing page behavior:
 - Search-style lead form with city, month, and property/capacity inputs.
 - Local confirmation message after submitting the form.
 - Launch-market, trust, cleaner-profile, and early-access sections.
+- Login and signup navigation to the first authenticated routes.
 
 The landing page does not yet save lead/search data to the Django backend.
 
@@ -180,9 +185,15 @@ The backend has initial domain models, migrations, admin registrations, serializ
 
 Implemented service-level behavior:
 
+- Signup, login, logout, and current-user APIs using Django sessions.
+- Pending, approved, rejected, and suspended account status.
+- Admin approval, rejection, and suspension actions.
+- Agency profile, invitation, membership, and member assignment APIs.
+- Cookie consent records for essential, analytics, and marketing choices.
 - Publish draft cleaning jobs.
-- Allow verified cleaners to apply to open jobs.
+- Allow approved, verified cleaners and approved agencies to apply to open jobs.
 - Allow hosts/admins to accept one application.
+- Allow assigned agencies to delegate accepted work to active member cleaners.
 - Reject competing applications after assignment.
 - Mark assigned jobs completed.
 - Allow two-way reviews only after completion.

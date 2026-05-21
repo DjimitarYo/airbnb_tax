@@ -1,26 +1,56 @@
+from datetime import timedelta
+
+from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils import timezone
 
 from apps.core.models import TimeStampedModel
+
+
+def default_invitation_expires_at():
+    return timezone.now() + timedelta(days=14)
 
 
 class User(AbstractUser):
     class Role(models.TextChoices):
         HOST = "host", "Host"
         CLEANER = "cleaner", "Cleaner"
+        AGENCY = "agency", "Agency"
         ADMIN = "admin", "Admin"
 
     class Language(models.TextChoices):
         BULGARIAN = "bg", "Bulgarian"
         ENGLISH = "en", "English"
 
+    class AccountStatus(models.TextChoices):
+        PENDING = "pending", "Pending"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+        SUSPENDED = "suspended", "Suspended"
+
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.HOST)
+    account_status = models.CharField(
+        max_length=20,
+        choices=AccountStatus.choices,
+        default=AccountStatus.PENDING,
+    )
     phone_number = models.CharField(max_length=32, blank=True)
     preferred_language = models.CharField(
         max_length=8,
         choices=Language.choices,
         default=Language.BULGARIAN,
     )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        related_name="approved_users",
+        null=True,
+        blank=True,
+    )
+    email_verified_at = models.DateTimeField(null=True, blank=True)
+    phone_verified_at = models.DateTimeField(null=True, blank=True)
 
     @property
     def is_host(self) -> bool:
@@ -31,8 +61,22 @@ class User(AbstractUser):
         return self.role == self.Role.CLEANER
 
     @property
+    def is_agency(self) -> bool:
+        return self.role == self.Role.AGENCY
+
+    @property
     def is_platform_admin(self) -> bool:
         return self.role == self.Role.ADMIN or self.is_staff
+
+    @property
+    def is_approved(self) -> bool:
+        return self.is_platform_admin or self.account_status == self.AccountStatus.APPROVED
+
+    def approve(self, approved_by=None) -> None:
+        self.account_status = self.AccountStatus.APPROVED
+        self.approved_at = timezone.now()
+        self.approved_by = approved_by
+        self.save(update_fields=["account_status", "approved_at", "approved_by"])
 
 
 class HostProfile(TimeStampedModel):
@@ -84,3 +128,151 @@ class CleanerProfile(TimeStampedModel):
     def __str__(self) -> str:
         return self.display_name or self.user.get_username()
 
+
+class AgencyProfile(TimeStampedModel):
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="agency_profile",
+    )
+    company_name = models.CharField(max_length=255)
+    city = models.CharField(max_length=120, blank=True)
+    service_areas = models.JSONField(default=list, blank=True)
+    description = models.TextField(blank=True)
+
+    def __str__(self) -> str:
+        return self.company_name or self.user.get_username()
+
+
+class AgencyInvitation(TimeStampedModel):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        ACCEPTED = "accepted", "Accepted"
+        DECLINED = "declined", "Declined"
+        REVOKED = "revoked", "Revoked"
+        EXPIRED = "expired", "Expired"
+
+    agency = models.ForeignKey(
+        AgencyProfile,
+        on_delete=models.CASCADE,
+        related_name="invitations",
+    )
+    email = models.EmailField(blank=True)
+    phone_number = models.CharField(max_length=32, blank=True)
+    invited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="sent_agency_invitations",
+        null=True,
+        blank=True,
+    )
+    cleaner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="accepted_agency_invitations",
+        null=True,
+        blank=True,
+    )
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    token = models.CharField(max_length=64, unique=True)
+    message = models.TextField(blank=True)
+    expires_at = models.DateTimeField(default=default_invitation_expires_at)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                check=~models.Q(email="") | ~models.Q(phone_number=""),
+                name="agency_invitation_has_contact",
+            )
+        ]
+
+    @property
+    def is_expired(self) -> bool:
+        return self.expires_at <= timezone.now()
+
+    def __str__(self) -> str:
+        contact = self.email or self.phone_number
+        return f"{contact} invited to {self.agency}"
+
+
+class AgencyMembership(TimeStampedModel):
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        REVOKED = "revoked", "Revoked"
+
+    agency = models.ForeignKey(
+        AgencyProfile,
+        on_delete=models.CASCADE,
+        related_name="memberships",
+    )
+    cleaner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="agency_memberships",
+    )
+    invited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="created_agency_memberships",
+        null=True,
+        blank=True,
+    )
+    invitation = models.ForeignKey(
+        AgencyInvitation,
+        on_delete=models.SET_NULL,
+        related_name="memberships",
+        null=True,
+        blank=True,
+    )
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    joined_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["agency__company_name", "cleaner__username"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["agency", "cleaner"],
+                name="unique_cleaner_per_agency",
+            )
+        ]
+
+    @property
+    def is_active(self) -> bool:
+        return self.status == self.Status.ACTIVE
+
+    def __str__(self) -> str:
+        return f"{self.cleaner} at {self.agency}"
+
+
+class CookieConsent(TimeStampedModel):
+    class Source(models.TextChoices):
+        BANNER = "banner", "Banner"
+        ACCOUNT = "account", "Account"
+        API = "api", "API"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="cookie_consents",
+        null=True,
+        blank=True,
+    )
+    visitor_id = models.CharField(max_length=80, blank=True, db_index=True)
+    consent_version = models.CharField(max_length=40, default="v1")
+    policy_version = models.CharField(max_length=40, default="v1")
+    essential = models.BooleanField(default=True)
+    analytics = models.BooleanField(default=False)
+    marketing = models.BooleanField(default=False)
+    source = models.CharField(max_length=20, choices=Source.choices, default=Source.BANNER)
+    user_agent = models.TextField(blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        subject = self.user_id or self.visitor_id
+        return f"Cookie consent {subject} ({self.policy_version})"
