@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Host Cleaner Marketplace — Architecture &amp; Database</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      padding: 48px 28px 80px;
+      max-width: 1480px;
+      margin: 0 auto;
+    }
+
+    header { margin-bottom: 56px; }
+    header h1 {
+      font-size: 30px;
+      font-weight: 700;
+      color: #f0f6fc;
+      letter-spacing: -0.5px;
+    }
+    header p {
+      margin-top: 6px;
+      font-size: 14px;
+      color: #8b949e;
+    }
+
+    .section { margin-bottom: 64px; }
+
+    .section-header { margin-bottom: 20px; }
+    .section-header h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #f0f6fc;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-header h2 .badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 20px;
+      background: #1f2d3d;
+      color: #58a6ff;
+      border: 1px solid #1f4068;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+    }
+    .section-header p {
+      margin-top: 4px;
+      font-size: 13px;
+      color: #6e7681;
+      padding-left: 2px;
+    }
+
+    .card {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 12px;
+      padding: 36px 24px;
+      overflow-x: auto;
+    }
+
+    .mermaid {
+      display: flex;
+      justify-content: center;
+      min-height: 120px;
+    }
+
+    .domain-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid #21262d;
+    }
+    .domain-legend .chip {
+      font-size: 12px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      border: 1px solid;
+      font-weight: 500;
+    }
+    .chip-accounts  { color: #79c0ff; border-color: #1f4068; background: #0d2137; }
+    .chip-properties{ color: #a5d6a7; border-color: #1b4332; background: #0a2e1f; }
+    .chip-market    { color: #ffb74d; border-color: #4a2c00; background: #2d1a00; }
+    .chip-feedback  { color: #f48fb1; border-color: #4a1030; background: #2d0920; }
+    .chip-notif     { color: #ce93d8; border-color: #3b1a4a; background: #200d2e; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Host Cleaner Marketplace</h1>
+  <p>Bulgarian short-term rental host × verified cleaner marketplace &mdash; Django + Next.js + PostgreSQL</p>
+</header>
+
+<!-- ═══════════════════════════════════════════════════
+     1. SYSTEM ARCHITECTURE
+════════════════════════════════════════════════════ -->
+<section class="section">
+  <div class="section-header">
+    <h2>System Architecture <span class="badge">Infrastructure</span></h2>
+    <p>Docker Compose services and external integration boundaries</p>
+  </div>
+  <div class="card">
+    <div class="mermaid">
+flowchart TB
+    Browser(["🖥️ Browser\nHost / Cleaner / Admin"])
+
+    subgraph Docker["  Docker Compose Stack  "]
+        direction LR
+
+        subgraph FE["  Frontend  "]
+            Next["Next.js PWA\n:3000"]
+        end
+
+        subgraph BE["  Backend  "]
+            DRF["Django REST API\n:8000\ngunicorn"]
+            Worker["Celery Worker\nasync tasks"]
+        end
+
+        subgraph Data["  Data Layer  "]
+            PG[("PostgreSQL\n:5432\nairbnb_cleaners")]
+            Redis[("Redis\n:6379\ncache · broker")]
+        end
+    end
+
+    subgraph Ext["  External Services  "]
+        direction TB
+        GCal["Google Calendar API"]
+        iCal["iCal Feeds\nAirbnb · Booking.com"]
+        Email["Email Provider"]
+        SMS["SMS Provider"]
+    end
+
+    Browser -->|"HTTPS"| Next
+    Next -->|"REST /api/"| DRF
+    DRF <-->|"ORM"| PG
+    DRF -->|"cache / locks"| Redis
+    DRF -->|"enqueue tasks"| Redis
+    Worker -->|"consume tasks"| Redis
+    Worker <-->|"ORM"| PG
+    Worker -->|"OAuth sync"| GCal
+    Worker -->|"poll feeds"| iCal
+    Worker -->|"dispatch"| Email
+    Worker -->|"dispatch"| SMS
+
+    style Docker fill:#0d1f2d,stroke:#1f4068
+    style FE fill:#0a2e1f,stroke:#1b4332
+    style BE fill:#1a1a00,stroke:#3d3a00
+    style Data fill:#1a0d00,stroke:#4a2c00
+    style Ext fill:#1a0d1a,stroke:#3b1a4a
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════
+     2. DATABASE SCHEMA
+════════════════════════════════════════════════════ -->
+<section class="section">
+  <div class="section-header">
+    <h2>Database Schema <span class="badge">ERD</span></h2>
+    <p>Entity-relationship diagram reflecting actual Django models &mdash; all entities include <code>created_at</code> / <code>updated_at</code> via TimeStampedModel</p>
+  </div>
+  <div class="card">
+    <div class="mermaid">
+erDiagram
+
+    User {
+        int id PK
+        string username
+        string email
+        string role "host | cleaner | admin"
+        string phone_number
+        string preferred_language "bg | en"
+        bool is_active
+        bool is_staff
+    }
+
+    HostProfile {
+        int id PK
+        int user_id FK
+        string company_name
+        string city
+        text notes
+    }
+
+    CleanerProfile {
+        int id PK
+        int user_id FK
+        string kind "individual | agency"
+        string verification_status "pending | verified | rejected | suspended"
+        string display_name
+        text bio
+        json service_areas
+        decimal average_rating
+        int completed_jobs_count
+    }
+
+    Property {
+        int id PK
+        int host_id FK
+        string name
+        string address
+        string city
+        string country
+        string timezone "Europe/Sofia"
+        text access_notes
+        text cleaning_instructions
+        int default_cleaning_duration_min
+        decimal default_price_eur
+    }
+
+    ExternalCalendarConnection {
+        int id PK
+        int property_id FK
+        string provider "ical | google"
+        string name
+        string direction "import | export | two_way"
+        url feed_url
+        string external_calendar_id
+        string status "active | paused | error"
+        datetime last_sync_at
+        text last_error
+    }
+
+    Reservation {
+        int id PK
+        int property_id FK
+        string source "airbnb | booking | manual"
+        string external_uid
+        string guest_name
+        datetime starts_at
+        datetime ends_at
+        text notes
+    }
+
+    CleaningBatch {
+        int id PK
+        int property_id FK
+        int host_id FK
+        string title
+        date month "first day of month"
+        string status "draft | open | assigned | completed | cancelled"
+        text notes
+    }
+
+    CleaningJob {
+        int id PK
+        int property_id FK
+        int host_id FK
+        int batch_id FK "nullable"
+        string title
+        text description
+        datetime scheduled_start
+        datetime scheduled_end
+        string currency "EUR"
+        decimal proposed_price
+        decimal agreed_price
+        string status "draft|open|assigned|completed|cancelled|disputed"
+        text cleaning_instructions
+    }
+
+    CleanerApplication {
+        int id PK
+        int job_id FK
+        int cleaner_id FK
+        string status "pending | accepted | rejected | withdrawn"
+        decimal proposed_price
+        text message
+    }
+
+    Assignment {
+        int id PK
+        int job_id FK "OneToOne"
+        int cleaner_id FK
+        int application_id FK "OneToOne, nullable"
+        decimal agreed_price
+        datetime assigned_at
+        datetime cancelled_at
+        datetime completed_at
+    }
+
+    Review {
+        int id PK
+        int job_id FK
+        int reviewer_id FK
+        int reviewee_id FK
+        int rating "1 – 5"
+        text comment
+        text private_note
+        bool is_private_issue
+    }
+
+    Notification {
+        int id PK
+        int user_id FK
+        string notification_type
+        string channel "in_app | email | sms"
+        string title
+        text body
+        json metadata
+        datetime read_at
+        datetime sent_at
+    }
+
+    User ||--o| HostProfile         : "has profile"
+    User ||--o| CleanerProfile      : "has profile"
+    User ||--o{ Property            : "owns"
+    User ||--o{ CleaningBatch       : "posts"
+    User ||--o{ CleaningJob         : "posts"
+    User ||--o{ CleanerApplication  : "submits"
+    User ||--o{ Assignment          : "assigned as cleaner"
+    User ||--o{ Review              : "reviewer"
+    User ||--o{ Review              : "reviewee"
+    User ||--o{ Notification        : "receives"
+
+    Property ||--o{ ExternalCalendarConnection : "connects"
+    Property ||--o{ Reservation                : "has"
+    Property ||--o{ CleaningBatch              : "has batches"
+    Property ||--o{ CleaningJob                : "has jobs"
+
+    CleaningBatch ||--o{ CleaningJob : "contains"
+
+    CleaningJob ||--o{ CleanerApplication : "receives applications"
+    CleaningJob ||--o| Assignment         : "has one assignment"
+    CleaningJob ||--o{ Review             : "generates reviews"
+
+    CleanerApplication ||--o| Assignment : "leads to"
+    </div>
+
+    <div class="domain-legend">
+      <span class="chip chip-accounts">accounts — User, HostProfile, CleanerProfile</span>
+      <span class="chip chip-properties">properties — Property, ExternalCalendarConnection, Reservation</span>
+      <span class="chip chip-market">marketplace — CleaningBatch, CleaningJob, CleanerApplication, Assignment</span>
+      <span class="chip chip-feedback">feedback — Review</span>
+      <span class="chip chip-notif">notifications — Notification</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════
+     3. JOB LIFECYCLE
+════════════════════════════════════════════════════ -->
+<section class="section">
+  <div class="section-header">
+    <h2>Job Lifecycle <span class="badge">State Machine</span></h2>
+    <p>CleaningJob status transitions &mdash; a job has at most one accepted Assignment</p>
+  </div>
+  <div class="card">
+    <div class="mermaid">
+stateDiagram-v2
+    direction LR
+
+    [*] --> draft
+
+    draft --> open       : host publishes job
+    draft --> cancelled  : host discards draft
+
+    open --> assigned    : host accepts application
+    open --> cancelled   : host cancels
+
+    assigned --> completed : mark complete
+    assigned --> disputed  : host or cleaner raises dispute
+    assigned --> cancelled : host cancels before start
+
+    disputed --> completed : admin resolves — work accepted
+    disputed --> cancelled : admin resolves — job voided
+
+    completed --> [*]
+    cancelled --> [*]
+
+    note right of assigned
+        One-to-one Assignment record created.
+        Competing applications auto-rejected.
+    end note
+
+    note right of completed
+        Both parties can submit a Review.
+        CleanerProfile rating updated.
+    end note
+    </div>
+  </div>
+</section>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      primaryColor: '#1f4068',
+      primaryTextColor: '#c9d1d9',
+      primaryBorderColor: '#388bfd',
+      lineColor: '#484f58',
+      secondaryColor: '#161b22',
+      tertiaryColor: '#0d1117',
+      edgeLabelBackground: '#161b22',
+      clusterBkg: '#0d1f2d',
+    },
+    flowchart: {
+      curve: 'basis',
+      padding: 24,
+    },
+    er: {
+      diagramPadding: 24,
+      useMaxWidth: true,
+      fontSize: 13,
+    },
+    stateDiagram: {
+      useMaxWidth: true,
+    },
+  });
+</script>
+</body>
+</html>
