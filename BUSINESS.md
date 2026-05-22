@@ -37,9 +37,17 @@ Cleaner segments:
 - Cleaning agencies that can cover several properties, cities, or higher-volume host accounts.
 - Existing trusted cleaners who can join the platform as verified supply.
 
+Agency segment:
+
+- Agencies have their own user account and agency profile.
+- Cleaners who work for an agency still have separate cleaner user accounts and their own calendars.
+- Agencies invite cleaners into their group, and cleaners accept the invitation from their own account.
+- After an agency wins or receives a job, the agency can assign that work to an active member cleaner calendar.
+
 Admin segment:
 
 - Internal operators who approve cleaners, inspect marketplace activity, handle disputes, moderate reviews, and support users.
+- Internal operators also approve or reject new user accounts before full marketplace rights are enabled.
 
 ## Core Problems
 
@@ -65,6 +73,7 @@ The platform needs:
 - Enough host demand and cleaner supply in the same areas.
 - Trust and quality controls before scaling too broadly.
 - Simple workflows that do not add more admin work than they remove.
+- Clear account approval, suspension, and support states so marketplace access can be controlled manually during the MVP.
 
 ## Value Proposition
 
@@ -103,14 +112,18 @@ The MVP marketplace flow should remain:
 1. Host creates a property.
 2. Host connects or imports calendar data where relevant.
 3. Host posts a single cleaning job or a monthly batch.
-4. Verified cleaners or agencies apply.
+4. Approved and verified cleaners, or approved agencies, apply.
 5. Host accepts one cleaner or agency for the job.
-6. Both sides coordinate and complete the cleaning.
-7. Both sides leave feedback after completion.
+6. If an agency is accepted, the agency assigns the work to an active member cleaner.
+7. Both sides coordinate and complete the cleaning.
+8. Both sides leave feedback after completion.
 
 Business rules to preserve:
 
+- New signups start as pending accounts and can log in only for onboarding until admin approval.
+- Approved property owners can post jobs and batches.
 - Cleaners must be verified before applying.
+- Agencies must be approved before applying or assigning work.
 - Hosts choose who to assign.
 - A job can have only one accepted cleaner assignment.
 - Price may be proposed or agreed in the app, but payment happens outside the platform in v1.
@@ -123,12 +136,26 @@ The main trust promise is verified and reviewed supply.
 
 Trust should come from:
 
-- Manual cleaner and agency approval before marketplace access.
+- Manual account, cleaner, and agency approval before marketplace access.
+- Agency membership invitations that the cleaner accepts from their own account.
 - Two-way reviews after completed jobs.
 - Admin-visible application and assignment history.
 - Private issue reporting.
 - Dispute visibility for internal operators.
 - Clear cleaner profiles, service areas, and availability.
+
+Signup and verification direction:
+
+- V1 uses admin approval after signup. Pending users can log in, complete onboarding, and wait for approval.
+- Email or SMS code verification is a future step. User records should be ready to store whether email and phone have been verified, but provider delivery is not part of the first implementation.
+- V1 web authentication uses secure Django session cookies with CSRF protection. JWT or OAuth can be revisited if native mobile apps, third-party API clients, or social sign-in become near-term requirements.
+
+Cookie and customer insight policy:
+
+- Essential cookies are required for login, CSRF protection, and account security.
+- Analytics and marketing cookies require explicit consent before use.
+- Consent records should store consent version, policy version, choices, timestamp, and either the user or anonymous visitor identifier.
+- Cookie data should be used to understand product usage and customer behavior without weakening trust or GDPR-conscious data minimization.
 
 Avoid positioning the product mainly as the cheapest cleaning option. For this market, reliability and coordination quality are stronger differentiators.
 
@@ -179,6 +206,7 @@ Do not treat any monetization model as final until validated with users and mark
 Primary MVP success signal:
 
 - Registered users, separated by hosts, cleaners, agencies, and admins.
+- Account approval funnel: pending, approved, rejected, and suspended users by role.
 
 Secondary signals:
 
@@ -187,6 +215,9 @@ Secondary signals:
 - Cities selected in the lead/search form.
 - Month/timeframe selected in the lead/search form.
 - Number of verified cleaners and agencies.
+- Number of agency invitations sent, accepted, declined, or expired.
+- Number of active agency-cleaner memberships.
+- Cookie consent choices and analytics opt-in rate.
 - Number of properties added.
 - Number of connected or imported calendars.
 - Number of posted cleaning jobs.
@@ -233,6 +264,8 @@ Operations:
 
 - How much admin work is required to verify supply and handle disputes?
 - What support process is needed when a cleaner cancels close to check-in time?
+- How much admin work is required to approve all signup categories before email or SMS verification is automated?
+- What verification details should agencies provide before they can invite cleaners and accept jobs?
 
 ## Business Decisions Locked So Far
 
@@ -244,6 +277,10 @@ Operations:
 - Visual direction should be marketplace-friendly and inspired by Airbnb-style clarity, without copying Airbnb branding.
 - The first target host segment is small and mid-sized hosts with roughly 1-20 properties.
 - Cleaner supply should include verified individual cleaners and agency partnerships.
+- Agencies have their own user accounts; cleaners who work for agencies remain separate cleaner users with their own calendars.
+- New users start pending and need admin approval before posting jobs, applying, or assigning agency work.
+- V1 authentication uses Django session cookies with CSRF protection.
+- Cookie consent is consent-first: only essential cookies are enabled before opt-in.
 - The marketplace should be available across Bulgaria while building practical local supply clusters.
 - The main trust promise is verified and reviewed cleaners/agencies.
 - The primary MVP business success signal is registered users.

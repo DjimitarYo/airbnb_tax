@@ -44,9 +44,12 @@ The repository now contains the first implementation scaffold:
 - Django project and domain apps.
 - Initial database models and migrations.
 - REST API route groups.
+- Session-cookie signup, login, logout, and current-user APIs.
+- Manual account approval states and admin approval actions.
+- Agency profiles, invitations, memberships, and delegated cleaner assignments.
+- Cookie consent records for optional analytics and marketing cookies.
 - Marketplace service functions for publishing jobs, applying, accepting, completing, and reviewing.
 - Notification records and placeholder Celery tasks.
 - Calendar conflict API and placeholder sync tasks.
-- Next.js dashboard shell.
+- Next.js landing page, login/signup pages, protected app entry, and cookie consent banner.
 - Docker Compose local infrastructure.
-

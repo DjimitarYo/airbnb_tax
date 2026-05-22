@@ -36,6 +36,7 @@ class AssignmentSerializer(serializers.ModelSerializer):
             "id",
             "job",
             "cleaner",
+            "assigned_member",
             "application",
             "agreed_price",
             "assigned_at",
@@ -45,6 +46,10 @@ class AssignmentSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = fields
+
+
+class AssignMemberSerializer(serializers.Serializer):
+    assigned_member_id = serializers.IntegerField()
 
 
 class CleaningJobSerializer(serializers.ModelSerializer):
@@ -127,4 +132,3 @@ class CleanerApplicationSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "job", "cleaner", "status", "created_at", "updated_at"]
-

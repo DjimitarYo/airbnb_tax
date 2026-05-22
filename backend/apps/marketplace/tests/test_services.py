@@ -20,12 +20,18 @@ from apps.properties.models import Property
 
 class MarketplaceServiceTests(TestCase):
     def setUp(self):
-        self.host = User.objects.create_user(username="host", password="password123", role=User.Role.HOST)
+        self.host = User.objects.create_user(
+            username="host",
+            password="password123",
+            role=User.Role.HOST,
+            account_status=User.AccountStatus.APPROVED,
+        )
         HostProfile.objects.create(user=self.host)
         self.cleaner = User.objects.create_user(
             username="cleaner",
             password="password123",
             role=User.Role.CLEANER,
+            account_status=User.AccountStatus.APPROVED,
         )
         CleanerProfile.objects.create(
             user=self.cleaner,
@@ -76,6 +82,7 @@ class MarketplaceServiceTests(TestCase):
             username="unverified",
             password="password123",
             role=User.Role.CLEANER,
+            account_status=User.AccountStatus.APPROVED,
         )
         CleanerProfile.objects.create(user=unverified)
         publish_job(self.job)
@@ -101,4 +108,3 @@ class MarketplaceServiceTests(TestCase):
         self.assertEqual(completed.status, CleaningJob.Status.COMPLETED)
         self.assertEqual(review.rating, 5)
         self.assertEqual(self.cleaner.cleaner_profile.average_rating, 5)
-

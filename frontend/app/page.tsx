@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 
 type Audience = "host" | "cleaner";
+type Language = "BG" | "EN";
 
 const popularMarkets = ["Sofia", "Plovdiv", "Varna", "Burgas", "Bansko"];
 
@@ -72,6 +73,7 @@ export default function Home() {
   const [city, setCity] = useState("Sofia");
   const [month, setMonth] = useState("");
   const [properties, setProperties] = useState("3");
+  const [language, setLanguage] = useState<Language>("EN");
   const [showMenu, setShowMenu] = useState(false);
   const [leadMessage, setLeadMessage] = useState("");
   const [results, setResults] = useState<any[]>([]);
@@ -115,13 +117,21 @@ export default function Home() {
           <a href="#how-it-works">How it works</a>
           <a href="#cleaners">Cleaners</a>
           <a href="#trust">Trust</a>
-          <a href="#join">Join</a>
         </nav>
 
         <div className="header-actions">
-          <a className="text-link" href="#join">
-            Become a cleaner
+          <a className="text-link login-link" href="/login">
+            Log in
           </a>
+          <label className="language-picker" aria-label="Language">
+            <select
+              value={language}
+              onChange={(event) => setLanguage(event.target.value as Language)}
+            >
+              <option value="EN">EN</option>
+              <option value="BG">BG</option>
+            </select>
+          </label>
           <button
             className="menu-button"
             type="button"
@@ -312,8 +322,8 @@ export default function Home() {
             Find cleaners
             <ChevronRight size={18} aria-hidden />
           </a>
-          <a className="secondary-link" href="#top">
-            Join as cleaner
+          <a className="secondary-link" href="/signup">
+            Create account
             <Users size={18} aria-hidden />
           </a>
         </div>

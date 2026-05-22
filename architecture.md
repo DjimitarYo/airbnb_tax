@@ -26,7 +26,7 @@ Future extraction into microservices should be possible without rewriting core b
 
 Current implementation modules:
 
-- `apps.accounts`: users, host profiles, cleaner profiles, verification state, and role permissions.
+- `apps.accounts`: users, host profiles, cleaner profiles, agency profiles, agency invitations, agency memberships, cookie consent, verification state, and role permissions.
 - `apps.properties`: host properties, external calendar connections, and reservations.
 - `apps.marketplace`: cleaning batches, jobs, applications, assignments, and marketplace workflow services.
 - `apps.calendars`: conflict checks and placeholder background sync tasks.
@@ -36,6 +36,10 @@ Current implementation modules:
 Current frontend implementation:
 
 - `frontend/app/page.tsx`: public landing page with Airbnb-inspired structure, hero imagery, search-style lead form, launch markets, trust messaging, and host/cleaner calls to action.
+- `frontend/app/login/page.tsx`: session-cookie login screen.
+- `frontend/app/signup/page.tsx`: basic role-based signup for property owners, cleaners, and agencies.
+- `frontend/app/app/page.tsx`: protected entry route that shows pending approval or approved workspace state.
+- `frontend/app/components/CookieConsentBanner.tsx`: consent-first cookie banner for anonymous and logged-in visitors.
 - `frontend/app/globals.css`: public landing page styling.
 - The landing page is interactive locally but does not yet persist lead/search data to the backend.
 - The previous dashboard-like first screen should be treated as superseded; operational dashboards should move behind auth in future routes such as `/app`, `/host`, `/cleaner`, or `/admin`.
@@ -47,10 +51,22 @@ Current frontend implementation:
 Responsibilities:
 
 - User authentication.
-- Host, cleaner, and admin roles.
+- Property owner, cleaner, agency, and admin roles.
+- Django session-cookie authentication with CSRF protection for the v1 web app.
+- Account approval states: pending, approved, rejected, and suspended.
 - Profile data.
 - Cleaner verification status.
+- Agency profiles, agency invitations, and agency-cleaner memberships.
+- Cookie consent records for essential, analytics, and marketing choices.
 - Permissions and role-based API access.
+
+Rules:
+
+- Pending users can log in and complete onboarding, but cannot post jobs, apply for jobs, accept assignments, or assign agency work.
+- Property owners are stored with the existing `host` role value and presented in the UI as "Property owner".
+- Cleaners who work for an agency remain separate users with their own cleaner profile and calendar.
+- Agencies invite cleaners into their group; cleaners accept invitations from their own account.
+- Email/SMS code verification is planned but not delivered by providers in v1.
 
 ### Hosts and Properties
 
@@ -73,6 +89,21 @@ Responsibilities:
 - Public rating summary.
 - Work preferences.
 
+### Agencies
+
+Responsibilities:
+
+- Agency profile and service areas.
+- Cleaner invitations and agency membership management.
+- Agency-level job applications.
+- Assigning accepted agency work to active member cleaner calendars.
+
+Rules:
+
+- Agencies must be approved before applying for jobs or assigning work.
+- Agencies can assign work only to active cleaner members.
+- Member cleaners must still have approved accounts and verified cleaner profiles before receiving agency work.
+
 ### Marketplace Jobs
 
 Responsibilities:
@@ -82,6 +113,7 @@ Responsibilities:
 - Job search and filtering.
 - Job lifecycle state transitions.
 - Assignment rules.
+- Agency assignment delegation to an active member cleaner.
 - Cancellation and dispute flags.
 
 Recommended job lifecycle:
@@ -168,9 +200,14 @@ Responsibilities:
 The first schema should be based around these concepts:
 
 - User account.
+- Account approval state.
 - Host profile.
 - Cleaner profile.
 - Cleaner verification.
+- Agency profile.
+- Agency invitation.
+- Agency membership.
+- Cookie consent.
 - Property.
 - External calendar connection.
 - Reservation.
@@ -191,9 +228,17 @@ Use REST APIs through Django REST Framework.
 Current API route groups:
 
 - `/api/health/`
+- `/api/accounts/signup/`
+- `/api/accounts/login/`
+- `/api/accounts/logout/`
+- `/api/accounts/me/`
+- `/api/accounts/cookie-consent/`
 - `/api/accounts/users/`
 - `/api/accounts/hosts/`
 - `/api/accounts/cleaners/`
+- `/api/accounts/agencies/`
+- `/api/accounts/agency-invitations/`
+- `/api/accounts/agency-memberships/`
 - `/api/properties/properties/`
 - `/api/properties/calendar-connections/`
 - `/api/properties/reservations/`
@@ -207,6 +252,15 @@ Current API route groups:
 - `/admin/`
 
 The exact routes can evolve, but APIs should preserve domain boundaries and avoid leaking internal model structure unnecessarily.
+
+Important account and agency actions:
+
+- `POST /api/accounts/users/{id}/approve/`
+- `POST /api/accounts/users/{id}/reject/`
+- `POST /api/accounts/users/{id}/suspend/`
+- `POST /api/accounts/agencies/{id}/invite-cleaner/`
+- `POST /api/accounts/agency-invitations/{id}/accept/`
+- `POST /api/marketplace/assignments/{id}/assign-member/`
 
 ## Background Work
 
@@ -261,3 +315,10 @@ Target EU managed cloud infrastructure:
 - Basic metrics and uptime monitoring.
 
 The system should be GDPR-conscious from the start. Store only necessary personal data, avoid secrets in source control, and document retention/deletion decisions when they are implemented.
+
+Cookie controls:
+
+- Essential auth and security cookies are always available.
+- Analytics and marketing cookies require explicit consent.
+- Store consent choices with policy version, consent version, timestamp, and user or anonymous visitor identifier.
+- Do not activate optional customer-insight tracking before consent is recorded.
